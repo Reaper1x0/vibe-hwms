@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { apiFetch } from "@/lib/api/origin";
 import { isSupabaseConfigured } from "@/lib/env";
 
@@ -29,24 +30,32 @@ async function createPatient(formData: FormData) {
   const gender = String(formData.get("gender") ?? "").trim();
 
   if (!hospitalId || !fullName) {
+    redirect("/dashboard/patients?error=Hospital%20and%20name%20are%20required");
     return;
   }
 
-  const res = await apiFetch("/api/patients", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      hospital_id: hospitalId,
-      mrn: mrn || null,
-      full_name: fullName,
-      date_of_birth: dob || null,
-      gender: gender || null,
-    }),
-    cache: "no-store",
-  });
+  try {
+    const res = await apiFetch("/api/patients", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        hospital_id: hospitalId,
+        mrn: mrn || null,
+        full_name: fullName,
+        date_of_birth: dob || null,
+        gender: gender || null,
+      }),
+      cache: "no-store",
+    });
 
-  if (res.ok) {
-    redirect("/dashboard/patients?success=1");
+    if (res.ok) {
+      redirect("/dashboard/patients?success=1");
+    } else {
+      const error = await res.json().catch(() => ({ error: "Failed to create patient" }));
+      redirect(`/dashboard/patients?error=${encodeURIComponent(error.error || "Failed to create patient")}`);
+    }
+  } catch (e) {
+    redirect(`/dashboard/patients?error=${encodeURIComponent(e instanceof Error ? e.message : "Unknown error")}`);
   }
 }
 
@@ -55,7 +64,7 @@ const PATIENTS_PAGE_SIZE = 25;
 export default async function PatientsPage({
   searchParams,
 }: {
-  searchParams?: { q?: string; active?: string; page?: string; success?: string };
+  searchParams?: { q?: string; active?: string; page?: string; success?: string; error?: string };
 }) {
   if (!isSupabaseConfigured()) {
     return (
@@ -88,31 +97,42 @@ export default async function PatientsPage({
     hospitals = hospitalsJson.data ?? [];
   }
 
-  const patientsRes = await apiFetch("/api/patients", { cache: "no-store" });
-  const patientsJson = (await patientsRes.json().catch(() => ({ data: [] }))) as { data: PatientRow[] };
-  const patients = patientsJson.data ?? [];
-
-  const q = (searchParams?.q ?? "").toLowerCase();
+  const q = searchParams?.q ?? "";
   const activeFilter = searchParams?.active ?? "all";
-
-  const filteredPatients = patients.filter((p) => {
-    if (q) {
-      const haystack = `${p.mrn ?? ""} ${p.full_name}`.toLowerCase();
-      if (!haystack.includes(q)) return false;
-    }
-    if (activeFilter === "active" && !p.is_active) return false;
-    if (activeFilter === "inactive" && p.is_active) return false;
-    return true;
-  });
-
   const page = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
-  const totalPages = Math.max(1, Math.ceil(filteredPatients.length / PATIENTS_PAGE_SIZE));
-  const paginatedPatients = filteredPatients.slice((page - 1) * PATIENTS_PAGE_SIZE, page * PATIENTS_PAGE_SIZE);
+  const offset = (page - 1) * PATIENTS_PAGE_SIZE;
+
+  const patientsParams = new URLSearchParams();
+  patientsParams.set("limit", String(PATIENTS_PAGE_SIZE));
+  patientsParams.set("offset", String(offset));
+  if (q) {
+    patientsParams.set("q", q);
+  }
+  if (activeFilter !== "all") {
+    patientsParams.set("active", activeFilter);
+  }
+
+  const patientsRes = await apiFetch(`/api/patients?${patientsParams.toString()}`, { cache: "no-store" });
+  const patientsJson = (await patientsRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: PATIENTS_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
+    data: PatientRow[];
+    pagination: { total: number; limit: number; offset: number; hasMore: boolean };
+  };
+  const patients = patientsJson.data ?? [];
+  const pagination = patientsJson.pagination ?? { total: 0, limit: PATIENTS_PAGE_SIZE, offset: 0, hasMore: false };
+
+  const totalPages = Math.max(1, Math.ceil(pagination.total / PATIENTS_PAGE_SIZE));
 
   const showSuccess = searchParams?.success === "1";
 
+  const errorMessage = searchParams?.error ? decodeURIComponent(searchParams.error) : null;
+
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
+      {errorMessage ? (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
+          {errorMessage}
+        </div>
+      ) : null}
       {showSuccess ? (
         <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
           Patient created.
@@ -183,9 +203,7 @@ export default async function PatientsPage({
           </label>
 
           <div className="sm:col-span-4">
-            <button type="submit" className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
-              Create
-            </button>
+            <FormSubmitButton label="Create" loadingLabel="Creating…" />
           </div>
         </form>
       </section>
@@ -234,7 +252,7 @@ export default async function PatientsPage({
               </tr>
             </thead>
             <tbody>
-              {paginatedPatients.map((p) => (
+              {patients.map((p) => (
                 <tr key={p.id} className="border-t">
                   <td className="px-6 py-3 text-zinc-700">{p.mrn ?? "—"}</td>
                   <td className="px-6 py-3">
@@ -248,10 +266,10 @@ export default async function PatientsPage({
                   </td>
                 </tr>
               ))}
-              {paginatedPatients.length === 0 ? (
+              {patients.length === 0 ? (
                 <tr>
                   <td className="px-6 py-10 text-center text-zinc-600" colSpan={4}>
-                    {filteredPatients.length === 0
+                    {pagination.total === 0
                       ? "No patients yet. Add a patient using the form above."
                       : "No patients on this page."}
                   </td>
@@ -263,7 +281,7 @@ export default async function PatientsPage({
         {totalPages > 1 ? (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
             <span>
-              Page {page} of {totalPages} ({filteredPatients.length} patients)
+              Page {page} of {totalPages} ({pagination.total} patients)
             </span>
             <div className="flex gap-2">
               {page > 1 ? (

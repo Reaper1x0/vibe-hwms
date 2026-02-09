@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { ConfirmActionButton } from "@/components/ConfirmActionForm";
+import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { apiFetch } from "@/lib/api/origin";
 import { isSupabaseConfigured } from "@/lib/env";
 
@@ -69,7 +70,7 @@ async function setLeaveStatus(id: string, status: string) {
 export default async function LeavesPage({
   searchParams,
 }: {
-  searchParams?: { view?: string; status?: string; error?: string };
+  searchParams?: { view?: string; status?: string; error?: string; page?: string };
 }) {
   if (!isSupabaseConfigured()) {
     return (
@@ -99,16 +100,30 @@ export default async function LeavesPage({
 
   const canReview = role === "super_admin" || role === "admin" || role === "hod";
 
-  const leavesRes = await apiFetch("/api/leaves", { cache: "no-store" });
-  const leavesJson = (await leavesRes.json().catch(() => ({ data: [] }))) as { data: LeaveRow[] };
-  const allLeaves = leavesJson.data ?? [];
   const view = searchParams?.view ?? "all";
   const statusFilter = searchParams?.status ?? "all";
-  const leaves = allLeaves.filter((l) => {
-    if (view === "mine" && userId && l.user_id !== userId) return false;
-    if (statusFilter !== "all" && l.status !== statusFilter) return false;
-    return true;
-  });
+  const page = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
+  const LEAVES_PAGE_SIZE = 25;
+  const offset = (page - 1) * LEAVES_PAGE_SIZE;
+
+  const leavesParams = new URLSearchParams();
+  leavesParams.set("limit", String(LEAVES_PAGE_SIZE));
+  leavesParams.set("offset", String(offset));
+  if (view === "mine" && userId) {
+    leavesParams.set("user_id", userId);
+  }
+  if (statusFilter !== "all") {
+    leavesParams.set("status", statusFilter);
+  }
+
+  const leavesRes = await apiFetch(`/api/leaves?${leavesParams.toString()}`, { cache: "no-store" });
+  const leavesJson = (await leavesRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: LEAVES_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
+    data: LeaveRow[];
+    pagination: { total: number; limit: number; offset: number; hasMore: boolean };
+  };
+  const leaves = leavesJson.data ?? [];
+  const pagination = leavesJson.pagination ?? { total: 0, limit: LEAVES_PAGE_SIZE, offset: 0, hasMore: false };
+  const totalPages = Math.max(1, Math.ceil(pagination.total / LEAVES_PAGE_SIZE));
 
   const errorMessage = searchParams?.error ? decodeURIComponent(searchParams.error) : null;
 
@@ -141,9 +156,7 @@ export default async function LeavesPage({
               <input name="reason" className="mt-1 w-full rounded-md border px-3 py-2 text-sm" />
             </label>
             <div className="sm:col-span-4">
-              <button type="submit" className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
-                Submit
-              </button>
+              <FormSubmitButton label="Submit" loadingLabel="Submitting…" />
             </div>
           </form>
         </section>
@@ -234,13 +247,42 @@ export default async function LeavesPage({
               {leaves.length === 0 ? (
                 <tr>
                   <td className="px-6 py-10 text-center text-zinc-600" colSpan={5}>
-                    {view === "mine" ? "You have no leave requests." : "No leave requests yet. Request leave using the form above."}
+                    {pagination.total === 0
+                      ? view === "mine"
+                        ? "You have no leave requests."
+                        : "No leave requests yet. Request leave using the form above."
+                      : "No leave requests on this page."}
                   </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
         </div>
+        {totalPages > 1 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
+            <span>
+              Page {page} of {totalPages} ({pagination.total} requests)
+            </span>
+            <div className="flex gap-2">
+              {page > 1 ? (
+                <Link
+                  href={`/dashboard/leaves?view=${view}&status=${statusFilter}&page=${page - 1}`}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                >
+                  Previous
+                </Link>
+              ) : null}
+              {page < totalPages ? (
+                <Link
+                  href={`/dashboard/leaves?view=${view}&status=${statusFilter}&page=${page + 1}`}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                >
+                  Next
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </section>
     </main>
   );

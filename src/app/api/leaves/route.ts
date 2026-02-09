@@ -24,11 +24,16 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const hospitalId = searchParams.get("hospital_id");
+    const status = searchParams.get("status");
+    const userIdFilter = searchParams.get("user_id");
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "25", 10)));
+    const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10));
 
     let query = supabase
       .from("leave_requests")
       .select(
         "id,user_id,hospital_id,department_id,start_date,end_date,reason,status,reviewed_by,reviewed_at,is_active,created_at,updated_at",
+        { count: "exact" },
       )
       .order("created_at", { ascending: false });
 
@@ -52,12 +57,30 @@ export async function GET(request: Request) {
       }
     }
 
-    const { data, error: dbError } = await query;
+    if (userIdFilter) {
+      query = query.eq("user_id", userIdFilter);
+    }
+
+    if (status && status !== "all") {
+      query = query.eq("status", status);
+    }
+
+    query = query.range(offset, offset + limit - 1);
+
+    const { data, error: dbError, count } = await query;
     if (dbError) {
       return jsonError(500, "DB_ERROR", dbError.message);
     }
 
-    return Response.json({ data });
+    return Response.json({
+      data: data ?? [],
+      pagination: {
+        total: count ?? 0,
+        limit,
+        offset,
+        hasMore: (count ?? 0) > offset + limit,
+      },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return jsonError(500, "INTERNAL_ERROR", message);

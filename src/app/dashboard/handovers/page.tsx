@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { apiFetch } from "@/lib/api/origin";
 import { isSupabaseConfigured } from "@/lib/env";
 
@@ -34,23 +35,34 @@ async function createHandover(formData: FormData) {
   const patientId = String(formData.get("patient_id") ?? "").trim();
   const notes = String(formData.get("notes") ?? "").trim();
 
-  const res = await apiFetch("/api/handovers", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      hospital_id: hospitalId || undefined,
-      patient_id: patientId || null,
-      notes: notes || null,
-    }),
-    cache: "no-store",
-  });
+  try {
+    const res = await apiFetch("/api/handovers", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        hospital_id: hospitalId || undefined,
+        patient_id: patientId || null,
+        notes: notes || null,
+      }),
+      cache: "no-store",
+    });
 
-  if (res.ok) {
-    redirect("/dashboard/handovers");
+    if (res.ok) {
+      redirect("/dashboard/handovers?success=1");
+    } else {
+      const error = await res.json().catch(() => ({ error: "Failed to create handover" }));
+      redirect(`/dashboard/handovers?error=${encodeURIComponent(error.error || "Failed to create handover")}`);
+    }
+  } catch (e) {
+    redirect(`/dashboard/handovers?error=${encodeURIComponent(e instanceof Error ? e.message : "Unknown error")}`);
   }
 }
 
-export default async function HandoversPage() {
+export default async function HandoversPage({
+  searchParams,
+}: {
+  searchParams?: { page?: string; success?: string; error?: string };
+}) {
   if (!isSupabaseConfigured()) {
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
@@ -67,6 +79,7 @@ export default async function HandoversPage() {
   const meJson = (await meRes.json().catch(() => null)) as
     | {
         data?: {
+          user?: { id?: string };
           profile?: { role?: string; hospital_id?: string | null } | null;
         };
       }
@@ -83,12 +96,12 @@ export default async function HandoversPage() {
     hospitals = hospitalsJson.data ?? [];
   }
 
-  const patientsRes = await apiFetch("/api/patients", { cache: "no-store" });
+  const patientsRes = await apiFetch("/api/patients?limit=1000", { cache: "no-store" });
   const patientsJson = (await patientsRes.json().catch(() => ({ data: [] }))) as { data: PatientRow[] };
   const patients = patientsJson.data ?? [];
 
-  const handoversRes = await apiFetch("/api/handovers", { cache: "no-store" });
-  if (handoversRes.status === 403) {
+  const handoversResCheck = await apiFetch("/api/handovers?limit=1", { cache: "no-store" });
+  if (handoversResCheck.status === 403) {
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Handovers</h1>
@@ -96,13 +109,48 @@ export default async function HandoversPage() {
       </main>
     );
   }
-  const handoversJson = (await handoversRes.json().catch(() => ({ data: [] }))) as { data: HandoverRow[] };
+  const page = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
+  const HANDOVERS_PAGE_SIZE = 25;
+  const offset = (page - 1) * HANDOVERS_PAGE_SIZE;
+
+  const handoversParams = new URLSearchParams();
+  handoversParams.set("limit", String(HANDOVERS_PAGE_SIZE));
+  handoversParams.set("offset", String(offset));
+
+  const handoversRes = await apiFetch(`/api/handovers?${handoversParams.toString()}`, { cache: "no-store" });
+  if (handoversRes.status === 403) {
+    return (
+      <main className="mx-auto w-full max-w-5xl px-6 py-10">
+        <h1 className="text-2xl font-semibold tracking-tight">Handovers</h1>
+        <p className="mt-2 text-sm text-zinc-600">You don&apos;t have permission to view handovers.</p>
+      </main>
+    );
+  }
+  const handoversJson = (await handoversRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: HANDOVERS_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
+    data: HandoverRow[];
+    pagination: { total: number; limit: number; offset: number; hasMore: boolean };
+  };
   const handovers = handoversJson.data ?? [];
+  const pagination = handoversJson.pagination ?? { total: 0, limit: HANDOVERS_PAGE_SIZE, offset: 0, hasMore: false };
+  const totalPages = Math.max(1, Math.ceil(pagination.total / HANDOVERS_PAGE_SIZE));
 
   const patientNameById = new Map(patients.map((p) => [p.id, p.full_name]));
 
+  const errorMessage = searchParams?.error ? decodeURIComponent(searchParams.error) : null;
+  const showSuccess = searchParams?.success === "1";
+
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
+      {errorMessage ? (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
+          {errorMessage}
+        </div>
+      ) : null}
+      {showSuccess ? (
+        <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
+          Handover created.
+        </div>
+      ) : null}
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Handovers</h1>
         <p className="mt-2 text-sm text-zinc-600">Shift handovers and continuity notes.</p>
@@ -153,9 +201,7 @@ export default async function HandoversPage() {
           </label>
 
           <div className="sm:col-span-4">
-            <button type="submit" className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
-              Create
-            </button>
+            <FormSubmitButton label="Create" loadingLabel="Creating…" />
           </div>
         </form>
       </section>
@@ -198,13 +244,38 @@ export default async function HandoversPage() {
               {handovers.length === 0 ? (
                 <tr>
                   <td className="px-6 py-10 text-zinc-600" colSpan={4}>
-                    No handovers yet.
+                    {pagination.total === 0 ? "No handovers yet." : "No handovers on this page."}
                   </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
         </div>
+        {totalPages > 1 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
+            <span>
+              Page {page} of {totalPages} ({pagination.total} handovers)
+            </span>
+            <div className="flex gap-2">
+              {page > 1 ? (
+                <Link
+                  href={`/dashboard/handovers?page=${page - 1}`}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                >
+                  Previous
+                </Link>
+              ) : null}
+              {page < totalPages ? (
+                <Link
+                  href={`/dashboard/handovers?page=${page + 1}`}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                >
+                  Next
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </section>
     </main>
   );

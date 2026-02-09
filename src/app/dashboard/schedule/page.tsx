@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Fragment } from "react";
 
+import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { apiFetch } from "@/lib/api/origin";
 import { isSupabaseConfigured } from "@/lib/env";
 
@@ -31,34 +32,43 @@ async function createShift(formData: FormData) {
 
   if (!hospitalId || !startAt || !endAt) {
     redirect("/dashboard/schedule?error=Please%20fill%20hospital%20and%20start%20and%20end%20times");
+    return;
   }
   if (endAt <= startAt) {
     redirect("/dashboard/schedule?error=End%20time%20must%20be%20after%20start%20time");
+    return;
   }
 
-  const res = await apiFetch("/api/shifts", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      hospital_id: hospitalId,
-      start_at: startAt,
-      end_at: endAt,
-      shift_type: shiftType || null,
-    }),
-    cache: "no-store",
-  });
+  try {
+    const res = await apiFetch("/api/shifts", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        hospital_id: hospitalId,
+        start_at: startAt,
+        end_at: endAt,
+        shift_type: shiftType || null,
+      }),
+      cache: "no-store",
+    });
 
-  if (res.ok) {
-    redirect("/dashboard/schedule?success=1");
+    if (res.ok) {
+      redirect("/dashboard/schedule?success=1");
+    } else {
+      const error = await res.json().catch(() => ({ error: "Failed to create shift" }));
+      redirect(`/dashboard/schedule?error=${encodeURIComponent(error.error || "Failed to create shift")}`);
+    }
+  } catch (e) {
+    redirect(`/dashboard/schedule?error=${encodeURIComponent(e instanceof Error ? e.message : "Unknown error")}`);
   }
 }
 
 export default async function SchedulePage({
   searchParams,
 }: {
-  searchParams?: { error?: string; success?: string; period?: string };
+  searchParams?: { error?: string; success?: string; period?: string; page?: string };
 }) {
   if (!isSupabaseConfigured()) {
     return (
@@ -76,6 +86,7 @@ export default async function SchedulePage({
   const meJson = (await meRes.json().catch(() => null)) as
     | {
         data?: {
+          user?: { id?: string };
           profile?: {
             role?: string;
             hospital_id?: string | null;
@@ -95,24 +106,31 @@ export default async function SchedulePage({
     hospitals = hospitalsJson.data ?? [];
   }
 
-  const shiftsRes = await apiFetch("/api/shifts", { cache: "no-store" });
-  const shiftsJson = (await shiftsRes.json().catch(() => ({ data: [] }))) as { data: ShiftRow[] };
-  const allShifts = shiftsJson.data ?? [];
-
-  const now = new Date();
   const period = searchParams?.period ?? "upcoming";
-  const shifts =
-    period === "past"
-      ? allShifts.filter((s) => new Date(s.end_at) < now)
-      : period === "all"
-        ? allShifts
-        : allShifts.filter((s) => new Date(s.end_at) >= now);
+  const page = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
+  const SHIFTS_PAGE_SIZE = 50;
+  const offset = (page - 1) * SHIFTS_PAGE_SIZE;
+
+  const shiftsParams = new URLSearchParams();
+  shiftsParams.set("limit", String(SHIFTS_PAGE_SIZE));
+  shiftsParams.set("offset", String(offset));
+  shiftsParams.set("period", period);
+
+  const shiftsRes = await apiFetch(`/api/shifts?${shiftsParams.toString()}`, { cache: "no-store" });
+  const shiftsJson = (await shiftsRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: SHIFTS_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
+    data: ShiftRow[];
+    pagination: { total: number; limit: number; offset: number; hasMore: boolean };
+  };
+  const shifts = shiftsJson.data ?? [];
+  const pagination = shiftsJson.pagination ?? { total: 0, limit: SHIFTS_PAGE_SIZE, offset: 0, hasMore: false };
+  const totalPages = Math.max(1, Math.ceil(pagination.total / SHIFTS_PAGE_SIZE));
 
   const canManage = role === "super_admin" || role === "admin" || role === "hod";
 
   const errorMessage = searchParams?.error ? decodeURIComponent(searchParams.error) : null;
   const showSuccess = searchParams?.success === "1";
 
+  const now = new Date();
   const shiftsByDay = shifts.reduce<Record<string, ShiftRow[]>>((acc, s) => {
     const day = new Date(s.start_at).toISOString().slice(0, 10);
     if (!acc[day]) acc[day] = [];
@@ -204,9 +222,7 @@ export default async function SchedulePage({
             </label>
 
             <div className="sm:col-span-4">
-              <button type="submit" className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
-                Create
-              </button>
+              <FormSubmitButton label="Create" loadingLabel="Creating…" />
             </div>
           </form>
         </section>
@@ -268,6 +284,31 @@ export default async function SchedulePage({
             </tbody>
           </table>
         </div>
+        {totalPages > 1 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
+            <span>
+              Page {page} of {totalPages} ({pagination.total} shifts)
+            </span>
+            <div className="flex gap-2">
+              {page > 1 ? (
+                <Link
+                  href={`/dashboard/schedule?period=${period}&page=${page - 1}`}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                >
+                  Previous
+                </Link>
+              ) : null}
+              {page < totalPages ? (
+                <Link
+                  href={`/dashboard/schedule?period=${period}&page=${page + 1}`}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                >
+                  Next
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </section>
     </main>
   );

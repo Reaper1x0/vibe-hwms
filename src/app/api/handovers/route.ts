@@ -57,6 +57,8 @@ export async function GET(request: Request) {
     const shiftId = searchParams.get("shift_id");
     const fromUserId = searchParams.get("from_user_id");
     const toUserId = searchParams.get("to_user_id");
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "25", 10)));
+    const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10));
 
     const supabase = createSupabaseAdminClient();
 
@@ -64,6 +66,7 @@ export async function GET(request: Request) {
       .from("handovers")
       .select(
         "id,hospital_id,department_id,patient_id,shift_id,from_user_id,to_user_id,notes,is_active,created_at,updated_at",
+        { count: "exact" },
       )
       .order("created_at", { ascending: false });
 
@@ -92,12 +95,22 @@ export async function GET(request: Request) {
     if (fromUserId) query = query.eq("from_user_id", fromUserId);
     if (toUserId) query = query.eq("to_user_id", toUserId);
 
-    const { data, error: dbError } = await query;
+    query = query.range(offset, offset + limit - 1);
+
+    const { data, error: dbError, count } = await query;
     if (dbError) {
       return jsonError(500, "DB_ERROR", dbError.message);
     }
 
-    return Response.json({ data });
+    return Response.json({
+      data: data ?? [],
+      pagination: {
+        total: count ?? 0,
+        limit,
+        offset,
+        hasMore: (count ?? 0) > offset + limit,
+      },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return jsonError(500, "INTERNAL_ERROR", message);

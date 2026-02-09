@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { ConfirmActionButton } from "@/components/ConfirmActionForm";
+import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { apiFetch } from "@/lib/api/origin";
 import { isSupabaseConfigured } from "@/lib/env";
 
@@ -34,21 +35,29 @@ async function createSwap(formData: FormData) {
   const reason = String(formData.get("reason") ?? "").trim();
 
   if (!shiftId) {
+    redirect("/dashboard/swaps?error=Please%20select%20a%20shift");
     return;
   }
 
-  const res = await apiFetch("/api/swaps", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      shift_id: shiftId,
-      reason: reason || null,
-    }),
-    cache: "no-store",
-  });
+  try {
+    const res = await apiFetch("/api/swaps", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        shift_id: shiftId,
+        reason: reason || null,
+      }),
+      cache: "no-store",
+    });
 
-  if (res.ok) {
-    redirect("/dashboard/swaps");
+    if (res.ok) {
+      redirect("/dashboard/swaps?success=1");
+    } else {
+      const error = await res.json().catch(() => ({ error: "Failed to create swap request" }));
+      redirect(`/dashboard/swaps?error=${encodeURIComponent(error.error || "Failed to create swap request")}`);
+    }
+  } catch (e) {
+    redirect(`/dashboard/swaps?error=${encodeURIComponent(e instanceof Error ? e.message : "Unknown error")}`);
   }
 }
 
@@ -67,7 +76,11 @@ async function setSwapStatus(id: string, status: string) {
   }
 }
 
-export default async function SwapsPage() {
+export default async function SwapsPage({
+  searchParams,
+}: {
+  searchParams?: { page?: string; success?: string; error?: string };
+}) {
   if (!isSupabaseConfigured()) {
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
@@ -95,11 +108,24 @@ export default async function SwapsPage() {
 
   const canReview = role === "super_admin" || role === "admin" || role === "hod";
 
-  const swapsRes = await apiFetch("/api/swaps", { cache: "no-store" });
-  const swapsJson = (await swapsRes.json().catch(() => ({ data: [] }))) as { data: SwapRow[] };
-  const swaps = swapsJson.data ?? [];
+  const page = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
+  const SWAPS_PAGE_SIZE = 25;
+  const offset = (page - 1) * SWAPS_PAGE_SIZE;
 
-  const shiftsRes = await apiFetch("/api/shifts", { cache: "no-store" });
+  const swapsParams = new URLSearchParams();
+  swapsParams.set("limit", String(SWAPS_PAGE_SIZE));
+  swapsParams.set("offset", String(offset));
+
+  const swapsRes = await apiFetch(`/api/swaps?${swapsParams.toString()}`, { cache: "no-store" });
+  const swapsJson = (await swapsRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: SWAPS_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
+    data: SwapRow[];
+    pagination: { total: number; limit: number; offset: number; hasMore: boolean };
+  };
+  const swaps = swapsJson.data ?? [];
+  const pagination = swapsJson.pagination ?? { total: 0, limit: SWAPS_PAGE_SIZE, offset: 0, hasMore: false };
+  const totalPages = Math.max(1, Math.ceil(pagination.total / SWAPS_PAGE_SIZE));
+
+  const shiftsRes = await apiFetch("/api/shifts?limit=1000", { cache: "no-store" });
   const shiftsJson = (await shiftsRes.json().catch(() => ({ data: [] }))) as { data: ShiftRow[] };
   const allShifts = shiftsJson.data ?? [];
 
@@ -113,8 +139,21 @@ export default async function SwapsPage() {
     return "inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800";
   }
 
+  const errorMessage = searchParams?.error ? decodeURIComponent(searchParams.error) : null;
+  const showSuccess = searchParams?.success === "1";
+
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
+      {errorMessage ? (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
+          {errorMessage}
+        </div>
+      ) : null}
+      {showSuccess ? (
+        <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
+          Swap request created.
+        </div>
+      ) : null}
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Swap Requests</h1>
         <p className="mt-2 text-sm text-zinc-600">Request shift swaps and manage approvals.</p>
@@ -146,9 +185,7 @@ export default async function SwapsPage() {
             <input name="reason" className="mt-1 w-full rounded-md border px-3 py-2 text-sm" />
           </label>
           <div className="sm:col-span-4">
-            <button type="submit" className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
-              Submit
-            </button>
+            <FormSubmitButton label="Submit" loadingLabel="Submitting…" />
           </div>
         </form>
       </section>
@@ -229,13 +266,38 @@ export default async function SwapsPage() {
               {swaps.length === 0 ? (
                 <tr>
                   <td className="px-6 py-10 text-zinc-600" colSpan={5}>
-                    No swap requests yet.
+                    {pagination.total === 0 ? "No swap requests yet." : "No swap requests on this page."}
                   </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
         </div>
+        {totalPages > 1 ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
+            <span>
+              Page {page} of {totalPages} ({pagination.total} requests)
+            </span>
+            <div className="flex gap-2">
+              {page > 1 ? (
+                <Link
+                  href={`/dashboard/swaps?page=${page - 1}`}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                >
+                  Previous
+                </Link>
+              ) : null}
+              {page < totalPages ? (
+                <Link
+                  href={`/dashboard/swaps?page=${page + 1}`}
+                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                >
+                  Next
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </section>
     </main>
   );

@@ -27,12 +27,16 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const hospitalId = searchParams.get("hospital_id");
     const departmentId = searchParams.get("department_id");
+    const q = searchParams.get("q");
+    const active = searchParams.get("active");
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "25", 10)));
+    const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10));
 
     const supabase = createSupabaseAdminClient();
 
     let query = supabase
       .from("patients")
-      .select("id,hospital_id,department_id,mrn,full_name,date_of_birth,gender,notes,is_active,created_at,updated_at")
+      .select("id,hospital_id,department_id,mrn,full_name,date_of_birth,gender,notes,is_active,created_at,updated_at", { count: "exact" })
       .order("created_at", { ascending: false });
 
     if (profile.role === "super_admin") {
@@ -53,12 +57,35 @@ export async function GET(request: Request) {
       query = query.eq("department_id", departmentId);
     }
 
-    const { data, error: dbError } = await query;
+    if (q && q.trim()) {
+      const searchTerm = `%${q.trim()}%`;
+      query = query.or(`full_name.ilike.${searchTerm},mrn.ilike.${searchTerm}`);
+    }
+
+    if (active && active !== "all") {
+      if (active === "active") {
+        query = query.eq("is_active", true);
+      } else if (active === "inactive") {
+        query = query.eq("is_active", false);
+      }
+    }
+
+    query = query.range(offset, offset + limit - 1);
+
+    const { data, error: dbError, count } = await query;
     if (dbError) {
       return jsonError(500, "DB_ERROR", dbError.message);
     }
 
-    return Response.json({ data });
+    return Response.json({
+      data: data ?? [],
+      pagination: {
+        total: count ?? 0,
+        limit,
+        offset,
+        hasMore: (count ?? 0) > offset + limit,
+      },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return jsonError(500, "INTERNAL_ERROR", message);

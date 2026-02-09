@@ -133,16 +133,6 @@ export default async function TaskDetailPage({ params }: { params: { id: string 
     patient = patientJson?.data ?? null;
   }
 
-  function formatStatus(status: string) {
-    if (status === "in_progress") return "In progress";
-    if (status === "todo") return "To do";
-    return status.charAt(0).toUpperCase() + status.slice(1);
-  }
-
-  function badgeClasses(base: string) {
-    return `inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${base}`;
-  }
-
   const isAssignedToMe = userId && task.assigned_to === userId;
 
   return (

@@ -76,6 +76,8 @@ Then run the file contents in the SQL Editor.
 
 **Full step-by-step guide:** see [DEPLOYMENT.md](../DEPLOYMENT.md) in the repo root (Supabase project + migrations, then Vercel with env vars and live URL).
 
+**Deployment checklist:** see [DEPLOYMENT_CHECKLIST.md](../DEPLOYMENT_CHECKLIST.md) for a comprehensive pre-deployment verification list.
+
 Short version:
 
 1. Create a new Vercel project and set the **Root Directory** to `web`.
@@ -90,6 +92,11 @@ Short version:
 - Build Command: `npm run build`
 - Install Command: `npm install`
 - Output: Next.js default
+
+4. **After deployment:**
+   - Add your Vercel URL to Supabase Auth redirect URLs
+   - Verify all features work on the live URL
+   - Check error handling and 404 pages
 
 ## RLS verification checklist
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { apiFetch } from "@/lib/api/origin";
 import { isSupabaseConfigured } from "@/lib/env";
 
@@ -33,23 +34,31 @@ async function createTask(formData: FormData) {
   const patientId = String(formData.get("patient_id") ?? "").trim();
 
   if (!title) {
+    redirect("/dashboard/tasks?error=Title%20is%20required");
     return;
   }
 
-  const res = await apiFetch("/api/tasks", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      hospital_id: hospitalId || undefined,
-      title,
-      description: description || null,
-      patient_id: patientId || null,
-    }),
-    cache: "no-store",
-  });
+  try {
+    const res = await apiFetch("/api/tasks", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        hospital_id: hospitalId || undefined,
+        title,
+        description: description || null,
+        patient_id: patientId || null,
+      }),
+      cache: "no-store",
+    });
 
-  if (res.ok) {
-    redirect("/dashboard/tasks?success=1");
+    if (res.ok) {
+      redirect("/dashboard/tasks?success=1");
+    } else {
+      const error = await res.json().catch(() => ({ error: "Failed to create task" }));
+      redirect(`/dashboard/tasks?error=${encodeURIComponent(error.error || "Failed to create task")}`);
+    }
+  } catch (e) {
+    redirect(`/dashboard/tasks?error=${encodeURIComponent(e instanceof Error ? e.message : "Unknown error")}`);
   }
 }
 
@@ -58,7 +67,7 @@ const TASKS_PAGE_SIZE = 25;
 export default async function TasksPage({
   searchParams,
 }: {
-  searchParams?: { status?: string; priority?: string; mine?: string; page?: string; success?: string };
+  searchParams?: { status?: string; priority?: string; mine?: string; page?: string; success?: string; error?: string };
 }) {
   if (!isSupabaseConfigured()) {
     return (
@@ -93,32 +102,40 @@ export default async function TasksPage({
     hospitals = hospitalsJson.data ?? [];
   }
 
-  const patientsRes = await apiFetch("/api/patients", { cache: "no-store" });
+  const patientsRes = await apiFetch("/api/patients?limit=1000", { cache: "no-store" });
   const patientsJson = (await patientsRes.json().catch(() => ({ data: [] }))) as { data: PatientRow[] };
   const patients = patientsJson.data ?? [];
-
-  const tasksRes = await apiFetch("/api/tasks", { cache: "no-store" });
-  const tasksJson = (await tasksRes.json().catch(() => ({ data: [] }))) as { data: TaskRow[] };
-  const tasks = tasksJson.data ?? [];
-
-  const patientNameById = new Map(patients.map((p) => [p.id, p.full_name]));
 
   const statusFilter = searchParams?.status ?? "all";
   const priorityFilter = searchParams?.priority ?? "all";
   const mineFilter = searchParams?.mine === "1";
-
-  const filteredTasks = tasks.filter((t) => {
-    const isOpen = t.status === "todo" || t.status === "in_progress";
-    if (statusFilter === "open" && !isOpen) return false;
-    if (statusFilter !== "all" && statusFilter !== "open" && t.status !== statusFilter) return false;
-    if (priorityFilter !== "all" && t.priority !== priorityFilter) return false;
-    if (mineFilter && userId && t.assigned_to !== userId) return false;
-    return true;
-  });
-
   const page = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
-  const totalPages = Math.max(1, Math.ceil(filteredTasks.length / TASKS_PAGE_SIZE));
-  const paginatedTasks = filteredTasks.slice((page - 1) * TASKS_PAGE_SIZE, page * TASKS_PAGE_SIZE);
+  const offset = (page - 1) * TASKS_PAGE_SIZE;
+
+  const tasksParams = new URLSearchParams();
+  tasksParams.set("limit", String(TASKS_PAGE_SIZE));
+  tasksParams.set("offset", String(offset));
+  if (statusFilter !== "all") {
+    tasksParams.set("status", statusFilter);
+  }
+  if (priorityFilter !== "all") {
+    tasksParams.set("priority", priorityFilter);
+  }
+  if (mineFilter && userId) {
+    tasksParams.set("assigned_to", userId);
+  }
+
+  const tasksRes = await apiFetch(`/api/tasks?${tasksParams.toString()}`, { cache: "no-store" });
+  const tasksJson = (await tasksRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: TASKS_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
+    data: TaskRow[];
+    pagination: { total: number; limit: number; offset: number; hasMore: boolean };
+  };
+  const tasks = tasksJson.data ?? [];
+  const pagination = tasksJson.pagination ?? { total: 0, limit: TASKS_PAGE_SIZE, offset: 0, hasMore: false };
+
+  const patientNameById = new Map(patients.map((p) => [p.id, p.full_name]));
+
+  const totalPages = Math.max(1, Math.ceil(pagination.total / TASKS_PAGE_SIZE));
 
   function formatStatus(status: string) {
     if (status === "in_progress") return "In progress";
@@ -143,8 +160,15 @@ export default async function TasksPage({
 
   const showSuccess = searchParams?.success === "1";
 
+  const errorMessage = searchParams?.error ? decodeURIComponent(searchParams.error) : null;
+
   return (
     <main className="mx-auto w-full max-w-5xl px-6 py-10">
+      {errorMessage ? (
+        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
+          {errorMessage}
+        </div>
+      ) : null}
       {showSuccess ? (
         <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
           Task created.
@@ -205,9 +229,7 @@ export default async function TasksPage({
           </label>
 
           <div className="sm:col-span-4">
-            <button type="submit" className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
-              Create
-            </button>
+            <FormSubmitButton label="Create" loadingLabel="Creating…" />
           </div>
         </form>
       </section>
@@ -276,7 +298,7 @@ export default async function TasksPage({
               </tr>
             </thead>
             <tbody>
-              {paginatedTasks.map((t) => (
+              {tasks.map((t) => (
                 <tr key={t.id} className="border-t">
                   <td className="px-6 py-3">
                     <Link className="font-medium text-zinc-900 underline" href={`/dashboard/tasks/${t.id}`}>
@@ -295,10 +317,10 @@ export default async function TasksPage({
                   </td>
                 </tr>
               ))}
-              {paginatedTasks.length === 0 ? (
+              {tasks.length === 0 ? (
                 <tr>
                   <td className="px-6 py-10 text-center text-zinc-600" colSpan={4}>
-                    {filteredTasks.length === 0 ? (
+                    {pagination.total === 0 ? (
                       <>
                         No tasks match the current filters.{" "}
                         <Link href="/dashboard/tasks" className="font-medium text-zinc-900 underline">
@@ -318,7 +340,7 @@ export default async function TasksPage({
         {totalPages > 1 ? (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
             <span>
-              Page {page} of {totalPages} ({filteredTasks.length} tasks)
+              Page {page} of {totalPages} ({pagination.total} tasks)
             </span>
             <div className="flex gap-2">
               {page > 1 ? (
