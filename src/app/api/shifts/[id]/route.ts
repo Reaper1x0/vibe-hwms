@@ -1,0 +1,133 @@
+import { z } from "zod";
+
+import { jsonError, zodErrorToMessage } from "@/lib/api/http";
+import { requireProfile } from "@/lib/api/rbac";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+
+const paramsSchema = z.object({
+  id: z.string().uuid(),
+});
+
+const updateShiftSchema = z
+  .object({
+    department_id: z.string().uuid().optional().nullable(),
+    assigned_user_id: z.string().uuid().optional().nullable(),
+    shift_type: z.string().optional().nullable(),
+    start_at: z.string().optional(),
+    end_at: z.string().optional(),
+    notes: z.string().optional().nullable(),
+    is_active: z.boolean().optional(),
+  })
+  .strict();
+
+export async function GET(_request: Request, ctx: { params: { id: string } }) {
+  const parsedParams = paramsSchema.safeParse(ctx.params);
+  if (!parsedParams.success) {
+    return jsonError(400, "VALIDATION_ERROR", zodErrorToMessage(parsedParams.error));
+  }
+
+  try {
+    const { user, profile, error: authError } = await requireProfile();
+    if (authError) {
+      return jsonError(500, "AUTH_ERROR", authError.message);
+    }
+    if (!user || !profile) {
+      return jsonError(401, "UNAUTHORIZED", "Authentication required");
+    }
+
+    const supabase = createSupabaseAdminClient();
+    const { data: shift, error: dbError } = await supabase
+      .from("shifts")
+      .select("id,hospital_id,department_id,assigned_user_id,shift_type,start_at,end_at,notes,is_active,created_at,updated_at")
+      .eq("id", parsedParams.data.id)
+      .single();
+
+    if (dbError) {
+      return jsonError(500, "DB_ERROR", dbError.message);
+    }
+
+    if (!shift) {
+      return jsonError(404, "NOT_FOUND", "Shift not found");
+    }
+
+    if (profile.role !== "super_admin") {
+      if (!profile.hospital_id || profile.hospital_id !== shift.hospital_id) {
+        return jsonError(403, "FORBIDDEN", "Hospital access denied");
+      }
+    }
+
+    if ((profile.role === "doctor" || profile.role === "nurse") && shift.assigned_user_id !== user.id) {
+      return jsonError(403, "FORBIDDEN", "Shift access denied");
+    }
+
+    return Response.json({ data: shift });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Unknown error";
+    return jsonError(500, "INTERNAL_ERROR", message);
+  }
+}
+
+export async function PUT(request: Request, ctx: { params: { id: string } }) {
+  const parsedParams = paramsSchema.safeParse(ctx.params);
+  if (!parsedParams.success) {
+    return jsonError(400, "VALIDATION_ERROR", zodErrorToMessage(parsedParams.error));
+  }
+
+  const body = await request.json().catch(() => null);
+  const parsedBody = updateShiftSchema.safeParse(body);
+  if (!parsedBody.success) {
+    return jsonError(400, "VALIDATION_ERROR", zodErrorToMessage(parsedBody.error));
+  }
+
+  try {
+    const { user, profile, error: authError } = await requireProfile();
+    if (authError) {
+      return jsonError(500, "AUTH_ERROR", authError.message);
+    }
+    if (!user || !profile) {
+      return jsonError(401, "UNAUTHORIZED", "Authentication required");
+    }
+
+    if (!(profile.role === "super_admin" || profile.role === "admin" || profile.role === "hod")) {
+      return jsonError(403, "FORBIDDEN", "Insufficient permissions");
+    }
+
+    const supabase = createSupabaseAdminClient();
+
+    const { data: existing, error: existingError } = await supabase
+      .from("shifts")
+      .select("id,hospital_id")
+      .eq("id", parsedParams.data.id)
+      .single();
+
+    if (existingError) {
+      return jsonError(500, "DB_ERROR", existingError.message);
+    }
+
+    if (!existing) {
+      return jsonError(404, "NOT_FOUND", "Shift not found");
+    }
+
+    if (profile.role !== "super_admin") {
+      if (!profile.hospital_id || profile.hospital_id !== existing.hospital_id) {
+        return jsonError(403, "FORBIDDEN", "Hospital access denied");
+      }
+    }
+
+    const { data, error: dbError } = await supabase
+      .from("shifts")
+      .update(parsedBody.data)
+      .eq("id", parsedParams.data.id)
+      .select("id,hospital_id,department_id,assigned_user_id,shift_type,start_at,end_at,notes,is_active,created_at,updated_at")
+      .single();
+
+    if (dbError) {
+      return jsonError(500, "DB_ERROR", dbError.message);
+    }
+
+    return Response.json({ data });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Unknown error";
+    return jsonError(500, "INTERNAL_ERROR", message);
+  }
+}
