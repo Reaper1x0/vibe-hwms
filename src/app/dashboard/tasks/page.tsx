@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AutoSubmitForm } from "@/components/AutoSubmitForm";
+import { CreateFormToggle } from "@/components/CreateFormToggle";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { apiFetch } from "@/lib/api/origin";
 import { isSupabaseConfigured } from "@/lib/env";
+import { DEFAULT_PAGE_SIZE, parseLimit, ROWS_PER_PAGE_OPTIONS } from "@/lib/table-pagination";
 
 type TaskRow = {
   id: string;
@@ -62,19 +65,17 @@ async function createTask(formData: FormData) {
   }
 }
 
-const TASKS_PAGE_SIZE = 25;
-
 export default async function TasksPage({
   searchParams,
 }: {
-  searchParams?: { status?: string; priority?: string; mine?: string; page?: string; success?: string; error?: string };
+  searchParams?: { status?: string; priority?: string; mine?: string; page?: string; limit?: string; success?: string; error?: string };
 }) {
   if (!isSupabaseConfigured()) {
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Tasks</h1>
         <p className="mt-2 text-sm text-zinc-600">Supabase is not configured.</p>
-        <Link className="mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
+        <Link className="ui-btn-primary mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
           Go to setup
         </Link>
       </main>
@@ -109,11 +110,12 @@ export default async function TasksPage({
   const statusFilter = searchParams?.status ?? "all";
   const priorityFilter = searchParams?.priority ?? "all";
   const mineFilter = searchParams?.mine === "1";
+  const limit = parseLimit(searchParams?.limit);
   const page = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
-  const offset = (page - 1) * TASKS_PAGE_SIZE;
+  const offset = (page - 1) * limit;
 
   const tasksParams = new URLSearchParams();
-  tasksParams.set("limit", String(TASKS_PAGE_SIZE));
+  tasksParams.set("limit", String(limit));
   tasksParams.set("offset", String(offset));
   if (statusFilter !== "all") {
     tasksParams.set("status", statusFilter);
@@ -126,16 +128,16 @@ export default async function TasksPage({
   }
 
   const tasksRes = await apiFetch(`/api/tasks?${tasksParams.toString()}`, { cache: "no-store" });
-  const tasksJson = (await tasksRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: TASKS_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
+  const tasksJson = (await tasksRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: DEFAULT_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
     data: TaskRow[];
     pagination: { total: number; limit: number; offset: number; hasMore: boolean };
   };
   const tasks = tasksJson.data ?? [];
-  const pagination = tasksJson.pagination ?? { total: 0, limit: TASKS_PAGE_SIZE, offset: 0, hasMore: false };
+  const pagination = tasksJson.pagination ?? { total: 0, limit: DEFAULT_PAGE_SIZE, offset: 0, hasMore: false };
 
   const patientNameById = new Map(patients.map((p) => [p.id, p.full_name]));
 
-  const totalPages = Math.max(1, Math.ceil(pagination.total / TASKS_PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(pagination.total / limit));
 
   function formatStatus(status: string) {
     if (status === "in_progress") return "In progress";
@@ -163,25 +165,24 @@ export default async function TasksPage({
   const errorMessage = searchParams?.error ? decodeURIComponent(searchParams.error) : null;
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-10">
+    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10 min-h-0">
       {errorMessage ? (
-        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
+        <div className="shrink-0 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
           {errorMessage}
         </div>
       ) : null}
       {showSuccess ? (
-        <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
+        <div className="shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
           Task created.
         </div>
       ) : null}
-      <div>
+      <div className="shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight">Tasks</h1>
         <p className="mt-2 text-sm text-zinc-600">Task list for patient care.</p>
       </div>
 
-      <section className="mt-8 rounded-lg border bg-white p-6">
-        <h2 className="text-base font-semibold">Create task</h2>
-        <form action={createTask} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-4">
+      <CreateFormToggle title="Create task" buttonLabel="Add task">
+        <form action={createTask} className="grid grid-cols-1 gap-4 sm:grid-cols-4">
           {role === "super_admin" ? (
             <label className="block sm:col-span-2">
               <span className="text-sm font-medium">Hospital</span>
@@ -232,12 +233,13 @@ export default async function TasksPage({
             <FormSubmitButton label="Create" loadingLabel="Creating…" />
           </div>
         </form>
-      </section>
+      </CreateFormToggle>
 
-      <section className="mt-8 overflow-hidden rounded-lg border bg-white">
-        <div className="border-b px-6 py-4">
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-white">
+        <div className="shrink-0 border-b px-6 py-4">
           <h2 className="text-base font-semibold">Tasks</h2>
-          <form className="mt-3 flex flex-wrap items-center gap-3 text-xs" method="GET">
+          <AutoSubmitForm className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+            <input type="hidden" name="page" value="1" />
             <label className="flex items-center gap-1">
               <span className="text-zinc-600">Status</span>
               <select
@@ -278,16 +280,23 @@ export default async function TasksPage({
                 <option value="1">Assigned to me</option>
               </select>
             </label>
-            <input type="hidden" name="page" value="1" />
-            <button
-              type="submit"
-              className="rounded-md border bg-white px-3 py-1 text-xs font-medium text-zinc-700"
-            >
-              Apply
-            </button>
-          </form>
+            <label className="flex items-center gap-1">
+              <span className="text-zinc-600">Rows</span>
+              <select
+                name="limit"
+                defaultValue={limit}
+                className="rounded-md border bg-white px-2 py-1 text-xs"
+              >
+                {ROWS_PER_PAGE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </AutoSubmitForm>
         </div>
-        <div className="overflow-x-auto">
+        <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-full text-left text-sm" aria-label="Tasks list">
             <thead className="bg-zinc-50 text-zinc-600">
               <tr>
@@ -301,7 +310,7 @@ export default async function TasksPage({
               {tasks.map((t) => (
                 <tr key={t.id} className="border-t">
                   <td className="px-6 py-3">
-                    <Link className="font-medium text-zinc-900 underline" href={`/dashboard/tasks/${t.id}`}>
+                    <Link className="ui-link font-medium text-zinc-900 underline" href={`/dashboard/tasks/${t.id}`}>
                       {t.title}
                     </Link>
                     <p className="mt-1 text-xs text-zinc-500">{new Date(t.created_at).toLocaleString()}</p>
@@ -323,7 +332,7 @@ export default async function TasksPage({
                     {pagination.total === 0 ? (
                       <>
                         No tasks match the current filters.{" "}
-                        <Link href="/dashboard/tasks" className="font-medium text-zinc-900 underline">
+                        <Link href="/dashboard/tasks" className="ui-link font-medium text-zinc-900 underline">
                           Clear filters
                         </Link>{" "}
                         or create a task above.
@@ -338,23 +347,23 @@ export default async function TasksPage({
           </table>
         </div>
         {totalPages > 1 ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
             <span>
               Page {page} of {totalPages} ({pagination.total} tasks)
             </span>
             <div className="flex gap-2">
               {page > 1 ? (
                 <Link
-                  href={`/dashboard/tasks?status=${statusFilter}&priority=${priorityFilter}&mine=${mineFilter ? "1" : ""}&page=${page - 1}`}
-                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                  href={`/dashboard/tasks?status=${statusFilter}&priority=${priorityFilter}&mine=${mineFilter ? "1" : ""}&limit=${limit}&page=${page - 1}`}
+                  className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium"
                 >
                   Previous
                 </Link>
               ) : null}
               {page < totalPages ? (
                 <Link
-                  href={`/dashboard/tasks?status=${statusFilter}&priority=${priorityFilter}&mine=${mineFilter ? "1" : ""}&page=${page + 1}`}
-                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                  href={`/dashboard/tasks?status=${statusFilter}&priority=${priorityFilter}&mine=${mineFilter ? "1" : ""}&limit=${limit}&page=${page + 1}`}
+                  className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium"
                 >
                   Next
                 </Link>

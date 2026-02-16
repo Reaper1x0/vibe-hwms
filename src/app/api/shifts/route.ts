@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     const hospitalId = searchParams.get("hospital_id");
     const departmentId = searchParams.get("department_id");
     const period = searchParams.get("period");
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "25", 10)));
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "5", 10)));
     const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10));
 
     let query = supabase

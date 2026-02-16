@@ -29,7 +29,7 @@ export default async function ProfilePage() {
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Profile</h1>
         <p className="mt-2 text-sm text-zinc-600">Supabase is not configured.</p>
-        <Link className="mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
+        <Link className="ui-btn-primary mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
           Go to setup
         </Link>
       </main>
@@ -51,10 +51,6 @@ export default async function ProfilePage() {
               <h2 className="text-base font-semibold text-zinc-900">Account</h2>
               <dl className="mt-2 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                 <div>
-                  <dt className="text-xs uppercase tracking-wide text-zinc-500">User ID</dt>
-                  <dd className="mt-0.5 font-mono text-xs text-zinc-800 break-all">{json.data.user.id}</dd>
-                </div>
-                <div>
                   <dt className="text-xs uppercase tracking-wide text-zinc-500">Email</dt>
                   <dd className="mt-0.5 text-zinc-800">{json.data.profile.email ?? json.data.user.email ?? "—"}</dd>
                 </div>
@@ -71,18 +67,6 @@ export default async function ProfilePage() {
                 <div>
                   <dt className="text-xs uppercase tracking-wide text-zinc-500">Role</dt>
                   <dd className="mt-0.5 text-zinc-800">{json.data.profile.role}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-wide text-zinc-500">Hospital ID</dt>
-                  <dd className="mt-0.5 font-mono text-xs text-zinc-800 break-all">
-                    {json.data.profile.hospital_id ?? "—"}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs uppercase tracking-wide text-zinc-500">Department ID</dt>
-                  <dd className="mt-0.5 font-mono text-xs text-zinc-800 break-all">
-                    {json.data.profile.department_id ?? "—"}
-                  </dd>
                 </div>
                 <div>
                   <dt className="text-xs uppercase tracking-wide text-zinc-500">Status</dt>

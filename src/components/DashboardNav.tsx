@@ -24,11 +24,11 @@ export function DashboardNav({ role }: { role: string | null }) {
     return (
       <Link
         href={href}
-        className={
+        className={`ui-link transition-colors ${
           active
             ? "text-zinc-900 font-semibold underline underline-offset-2"
             : "text-zinc-600 hover:text-zinc-900 underline underline-offset-2"
-        }
+        }`}
       >
         {label}
       </Link>
@@ -36,6 +36,9 @@ export function DashboardNav({ role }: { role: string | null }) {
   }
 
   const roleLabel = role ? roleLabels[role] ?? role : null;
+
+  const canAccessDepartments = role === "super_admin" || role === "admin" || role === "hod";
+  const canAccessHospitals = role === "super_admin";
 
   return (
     <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
@@ -50,8 +53,8 @@ export function DashboardNav({ role }: { role: string | null }) {
       <span className="sr-only">Requests &amp; admin</span>
       {navLink("/dashboard/leaves", "Leaves")}
       {navLink("/dashboard/swaps", "Swaps")}
-      {navLink("/dashboard/departments", "Departments")}
-      {role === "super_admin" ? navLink("/dashboard/hospitals", "Hospitals") : null}
+      {canAccessDepartments ? navLink("/dashboard/departments", "Departments") : null}
+      {canAccessHospitals ? navLink("/dashboard/hospitals", "Hospitals") : null}
       {navLink("/dashboard/analytics", "Analytics")}
       <span className="text-zinc-300" aria-hidden>
         |

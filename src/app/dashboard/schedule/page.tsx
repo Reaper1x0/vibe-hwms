@@ -2,9 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Fragment } from "react";
 
+import { AutoSubmitForm } from "@/components/AutoSubmitForm";
+import { CreateFormToggle } from "@/components/CreateFormToggle";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { apiFetch } from "@/lib/api/origin";
 import { isSupabaseConfigured } from "@/lib/env";
+import { DEFAULT_PAGE_SIZE, parseLimit, ROWS_PER_PAGE_OPTIONS } from "@/lib/table-pagination";
 
 type ShiftRow = {
   id: string;
@@ -68,14 +71,14 @@ async function createShift(formData: FormData) {
 export default async function SchedulePage({
   searchParams,
 }: {
-  searchParams?: { error?: string; success?: string; period?: string; page?: string };
+  searchParams?: { error?: string; success?: string; period?: string; page?: string; limit?: string };
 }) {
   if (!isSupabaseConfigured()) {
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Schedule</h1>
         <p className="mt-2 text-sm text-zinc-600">Supabase is not configured.</p>
-        <Link className="mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
+        <Link className="ui-btn-primary mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
           Go to setup
         </Link>
       </main>
@@ -107,23 +110,23 @@ export default async function SchedulePage({
   }
 
   const period = searchParams?.period ?? "upcoming";
+  const limit = parseLimit(searchParams?.limit);
   const page = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
-  const SHIFTS_PAGE_SIZE = 50;
-  const offset = (page - 1) * SHIFTS_PAGE_SIZE;
+  const offset = (page - 1) * limit;
 
   const shiftsParams = new URLSearchParams();
-  shiftsParams.set("limit", String(SHIFTS_PAGE_SIZE));
+  shiftsParams.set("limit", String(limit));
   shiftsParams.set("offset", String(offset));
   shiftsParams.set("period", period);
 
   const shiftsRes = await apiFetch(`/api/shifts?${shiftsParams.toString()}`, { cache: "no-store" });
-  const shiftsJson = (await shiftsRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: SHIFTS_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
+  const shiftsJson = (await shiftsRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: DEFAULT_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
     data: ShiftRow[];
     pagination: { total: number; limit: number; offset: number; hasMore: boolean };
   };
   const shifts = shiftsJson.data ?? [];
-  const pagination = shiftsJson.pagination ?? { total: 0, limit: SHIFTS_PAGE_SIZE, offset: 0, hasMore: false };
-  const totalPages = Math.max(1, Math.ceil(pagination.total / SHIFTS_PAGE_SIZE));
+  const pagination = shiftsJson.pagination ?? { total: 0, limit: DEFAULT_PAGE_SIZE, offset: 0, hasMore: false };
+  const totalPages = Math.max(1, Math.ceil(pagination.total / limit));
 
   const canManage = role === "super_admin" || role === "admin" || role === "hod";
 
@@ -140,48 +143,63 @@ export default async function SchedulePage({
   const sortedDays = Object.keys(shiftsByDay).sort();
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-10">
+    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10 min-h-0">
       {errorMessage ? (
-        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
+        <div className="shrink-0 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
           {errorMessage}
         </div>
       ) : null}
       {showSuccess ? (
-        <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
+        <div className="shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
           Shift created.
         </div>
       ) : null}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Schedule</h1>
           <p className="mt-2 text-sm text-zinc-600">Shifts and duty roster.</p>
         </div>
-        <div className="flex gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
           <a
-            href="/dashboard/schedule?period=upcoming"
+            href={`/dashboard/schedule?period=upcoming&limit=${limit}`}
             className={`rounded-md px-3 py-1.5 font-medium ${period === "upcoming" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"}`}
           >
             Upcoming
           </a>
           <a
-            href="/dashboard/schedule?period=past"
+            href={`/dashboard/schedule?period=past&limit=${limit}`}
             className={`rounded-md px-3 py-1.5 font-medium ${period === "past" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"}`}
           >
             Past
           </a>
           <a
-            href="/dashboard/schedule?period=all"
+            href={`/dashboard/schedule?period=all&limit=${limit}`}
             className={`rounded-md px-3 py-1.5 font-medium ${period === "all" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"}`}
           >
             All
           </a>
+          <AutoSubmitForm className="flex items-center gap-1">
+            <input type="hidden" name="period" value={period} />
+            <input type="hidden" name="page" value="1" />
+            <span className="text-zinc-600 text-xs">Rows</span>
+            <select
+              name="limit"
+              defaultValue={limit}
+              className="rounded-md border bg-white px-2 py-1 text-xs"
+            >
+              {ROWS_PER_PAGE_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </AutoSubmitForm>
         </div>
       </div>
 
       {canManage ? (
-        <section className="mt-8 rounded-lg border bg-white p-6">
-          <h2 className="text-base font-semibold">Create shift</h2>
-          <form action={createShift} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <CreateFormToggle title="Create shift" buttonLabel="Add shift">
+          <form action={createShift} className="grid grid-cols-1 gap-4 sm:grid-cols-4">
             {role === "super_admin" ? (
               <label className="block sm:col-span-2">
                 <span className="text-sm font-medium">Hospital</span>
@@ -225,14 +243,14 @@ export default async function SchedulePage({
               <FormSubmitButton label="Create" loadingLabel="Creating…" />
             </div>
           </form>
-        </section>
+        </CreateFormToggle>
       ) : null}
 
-      <section className="mt-8 overflow-hidden rounded-lg border bg-white">
-        <div className="border-b px-6 py-4">
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-white">
+        <div className="shrink-0 border-b px-6 py-4">
           <h2 className="text-base font-semibold">Shifts</h2>
         </div>
-        <div className="overflow-x-auto">
+        <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-full text-left text-sm" aria-label="Schedule">
             <thead className="bg-zinc-50 text-zinc-600">
               <tr>
@@ -285,23 +303,23 @@ export default async function SchedulePage({
           </table>
         </div>
         {totalPages > 1 ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
             <span>
               Page {page} of {totalPages} ({pagination.total} shifts)
             </span>
             <div className="flex gap-2">
               {page > 1 ? (
                 <Link
-                  href={`/dashboard/schedule?period=${period}&page=${page - 1}`}
-                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                  href={`/dashboard/schedule?period=${period}&limit=${limit}&page=${page - 1}`}
+                  className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium"
                 >
                   Previous
                 </Link>
               ) : null}
               {page < totalPages ? (
                 <Link
-                  href={`/dashboard/schedule?period=${period}&page=${page + 1}`}
-                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                  href={`/dashboard/schedule?period=${period}&limit=${limit}&page=${page + 1}`}
+                  className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium"
                 >
                   Next
                 </Link>

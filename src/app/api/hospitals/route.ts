@@ -13,7 +13,7 @@ const createHospitalSchema = z.object({
   email: z.string().email().optional(),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { allowed, error: authError } = await requireRole(["super_admin"] as const);
     if (authError) {
@@ -23,18 +23,31 @@ export async function GET() {
       return jsonError(403, "FORBIDDEN", "Insufficient permissions");
     }
 
+    const { searchParams } = new URL(request.url);
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "5", 10)));
+    const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10));
+
     const supabase = createSupabaseAdminClient();
 
-    const { data, error: dbError } = await supabase
+    const { data, error: dbError, count } = await supabase
       .from("hospitals")
-      .select("id,name,code,address,city,phone,email,is_active,created_at,updated_at")
-      .order("created_at", { ascending: false });
+      .select("id,name,code,address,city,phone,email,is_active,created_at,updated_at", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (dbError) {
       return jsonError(500, "DB_ERROR", dbError.message);
     }
 
-    return Response.json({ data });
+    return Response.json({
+      data: data ?? [],
+      pagination: {
+        total: count ?? 0,
+        limit,
+        offset,
+        hasMore: (count ?? 0) > offset + limit,
+      },
+    });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     return jsonError(500, "INTERNAL_ERROR", message);

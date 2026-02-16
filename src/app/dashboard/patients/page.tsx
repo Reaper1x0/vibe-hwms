@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AutoSubmitForm } from "@/components/AutoSubmitForm";
+import { CreateFormToggle } from "@/components/CreateFormToggle";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { apiFetch } from "@/lib/api/origin";
 import { isSupabaseConfigured } from "@/lib/env";
+import { DEFAULT_PAGE_SIZE, parseLimit, ROWS_PER_PAGE_OPTIONS } from "@/lib/table-pagination";
 
 type PatientRow = {
   id: string;
@@ -59,19 +62,17 @@ async function createPatient(formData: FormData) {
   }
 }
 
-const PATIENTS_PAGE_SIZE = 25;
-
 export default async function PatientsPage({
   searchParams,
 }: {
-  searchParams?: { q?: string; active?: string; page?: string; success?: string; error?: string };
+  searchParams?: { q?: string; active?: string; page?: string; limit?: string; success?: string; error?: string };
 }) {
   if (!isSupabaseConfigured()) {
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Patients</h1>
         <p className="mt-2 text-sm text-zinc-600">Supabase is not configured.</p>
-        <Link className="mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
+        <Link className="ui-btn-primary mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
           Go to setup
         </Link>
       </main>
@@ -99,11 +100,12 @@ export default async function PatientsPage({
 
   const q = searchParams?.q ?? "";
   const activeFilter = searchParams?.active ?? "all";
+  const limit = parseLimit(searchParams?.limit);
   const page = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
-  const offset = (page - 1) * PATIENTS_PAGE_SIZE;
+  const offset = (page - 1) * limit;
 
   const patientsParams = new URLSearchParams();
-  patientsParams.set("limit", String(PATIENTS_PAGE_SIZE));
+  patientsParams.set("limit", String(limit));
   patientsParams.set("offset", String(offset));
   if (q) {
     patientsParams.set("q", q);
@@ -113,39 +115,38 @@ export default async function PatientsPage({
   }
 
   const patientsRes = await apiFetch(`/api/patients?${patientsParams.toString()}`, { cache: "no-store" });
-  const patientsJson = (await patientsRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: PATIENTS_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
+  const patientsJson = (await patientsRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: DEFAULT_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
     data: PatientRow[];
     pagination: { total: number; limit: number; offset: number; hasMore: boolean };
   };
   const patients = patientsJson.data ?? [];
-  const pagination = patientsJson.pagination ?? { total: 0, limit: PATIENTS_PAGE_SIZE, offset: 0, hasMore: false };
+  const pagination = patientsJson.pagination ?? { total: 0, limit: DEFAULT_PAGE_SIZE, offset: 0, hasMore: false };
 
-  const totalPages = Math.max(1, Math.ceil(pagination.total / PATIENTS_PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(pagination.total / limit));
 
   const showSuccess = searchParams?.success === "1";
 
   const errorMessage = searchParams?.error ? decodeURIComponent(searchParams.error) : null;
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-10">
+    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10 min-h-0">
       {errorMessage ? (
-        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
+        <div className="shrink-0 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
           {errorMessage}
         </div>
       ) : null}
       {showSuccess ? (
-        <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
+        <div className="shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
           Patient created.
         </div>
       ) : null}
-      <div>
+      <div className="shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight">Patients</h1>
         <p className="mt-2 text-sm text-zinc-600">Patient directory for task linking.</p>
       </div>
 
-      <section className="mt-8 rounded-lg border bg-white p-6">
-        <h2 className="text-base font-semibold">Create patient</h2>
-        <form action={createPatient} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-4">
+      <CreateFormToggle title="Create patient" buttonLabel="Add patient">
+        <form action={createPatient} className="grid grid-cols-1 gap-4 sm:grid-cols-4">
           {role === "super_admin" ? (
             <label className="block sm:col-span-2">
               <span className="text-sm font-medium">Hospital</span>
@@ -206,18 +207,19 @@ export default async function PatientsPage({
             <FormSubmitButton label="Create" loadingLabel="Creating…" />
           </div>
         </form>
-      </section>
+      </CreateFormToggle>
 
-      <section className="mt-8 overflow-hidden rounded-lg border bg-white">
-        <div className="border-b px-6 py-4">
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-white">
+        <div className="shrink-0 border-b px-6 py-4">
           <h2 className="text-base font-semibold">Patients</h2>
-          <form className="mt-3 flex flex-wrap items-center gap-3 text-xs" method="GET">
+          <AutoSubmitForm className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+            <input type="hidden" name="page" value="1" />
             <label className="flex items-center gap-1">
               <span className="text-zinc-600">Search</span>
               <input
                 name="q"
                 defaultValue={searchParams?.q ?? ""}
-                placeholder="Name or MRN"
+                placeholder="Name or MRN (Enter to apply)"
                 className="w-40 rounded-md border px-2 py-1 text-xs"
               />
             </label>
@@ -233,15 +235,23 @@ export default async function PatientsPage({
                 <option value="inactive">Inactive</option>
               </select>
             </label>
-            <button
-              type="submit"
-              className="rounded-md border bg-white px-3 py-1 text-xs font-medium text-zinc-700"
-            >
-              Apply
-            </button>
-          </form>
+            <label className="flex items-center gap-1">
+              <span className="text-zinc-600">Rows</span>
+              <select
+                name="limit"
+                defaultValue={limit}
+                className="rounded-md border bg-white px-2 py-1 text-xs"
+              >
+                {ROWS_PER_PAGE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </AutoSubmitForm>
         </div>
-        <div className="overflow-x-auto">
+        <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-full text-left text-sm" aria-label="Patients list">
             <thead className="bg-zinc-50 text-zinc-600">
               <tr>
@@ -256,7 +266,7 @@ export default async function PatientsPage({
                 <tr key={p.id} className="border-t">
                   <td className="px-6 py-3 text-zinc-700">{p.mrn ?? "—"}</td>
                   <td className="px-6 py-3">
-                    <Link className="font-medium text-zinc-900 underline" href={`/dashboard/patients/${p.id}`}>
+                    <Link className="ui-link font-medium text-zinc-900 underline" href={`/dashboard/patients/${p.id}`}>
                       {p.full_name}
                     </Link>
                   </td>
@@ -279,23 +289,23 @@ export default async function PatientsPage({
           </table>
         </div>
         {totalPages > 1 ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
             <span>
               Page {page} of {totalPages} ({pagination.total} patients)
             </span>
             <div className="flex gap-2">
               {page > 1 ? (
                 <Link
-                  href={`/dashboard/patients?q=${encodeURIComponent(searchParams?.q ?? "")}&active=${activeFilter}&page=${page - 1}`}
-                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                  href={`/dashboard/patients?q=${encodeURIComponent(searchParams?.q ?? "")}&active=${activeFilter}&limit=${limit}&page=${page - 1}`}
+                  className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium"
                 >
                   Previous
                 </Link>
               ) : null}
               {page < totalPages ? (
                 <Link
-                  href={`/dashboard/patients?q=${encodeURIComponent(searchParams?.q ?? "")}&active=${activeFilter}&page=${page + 1}`}
-                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                  href={`/dashboard/patients?q=${encodeURIComponent(searchParams?.q ?? "")}&active=${activeFilter}&limit=${limit}&page=${page + 1}`}
+                  className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium"
                 >
                   Next
                 </Link>

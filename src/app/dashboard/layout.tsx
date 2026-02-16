@@ -38,10 +38,10 @@ export default async function DashboardLayout({
     .maybeSingle();
 
   return (
-    <div className="min-h-dvh bg-zinc-50 text-zinc-950">
-      <header className="border-b bg-white">
+    <div className="flex min-h-dvh flex-col bg-zinc-50 text-zinc-950">
+      <header className="shrink-0 border-b bg-white">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <Link href="/dashboard" className="text-sm font-semibold tracking-tight">
+          <Link href="/dashboard" className="ui-link text-sm font-semibold tracking-tight">
             HWMS
           </Link>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -49,7 +49,7 @@ export default async function DashboardLayout({
             <form action={signOut}>
               <button
                 type="submit"
-                className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700"
               >
                 Log out
               </button>
@@ -57,7 +57,7 @@ export default async function DashboardLayout({
           </div>
         </div>
       </header>
-      {children}
+      <div className="min-h-0 flex-1 flex flex-col">{children}</div>
     </div>
   );
 }

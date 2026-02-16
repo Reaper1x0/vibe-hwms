@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     const departmentId = searchParams.get("department_id");
     const q = searchParams.get("q");
     const active = searchParams.get("active");
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "25", 10)));
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "5", 10)));
     const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10));
 
     const supabase = createSupabaseAdminClient();

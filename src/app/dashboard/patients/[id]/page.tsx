@@ -50,7 +50,7 @@ export default async function PatientDetailPage({ params }: { params: { id: stri
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Patient</h1>
         <p className="mt-2 text-sm text-zinc-600">Supabase is not configured.</p>
-        <Link className="mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
+        <Link className="ui-btn-primary mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
           Go to setup
         </Link>
       </main>
@@ -65,7 +65,7 @@ export default async function PatientDetailPage({ params }: { params: { id: stri
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Patient not found</h1>
-        <Link className="mt-6 inline-flex rounded-md border bg-white px-4 py-2 text-sm font-medium" href="/dashboard/patients">
+        <Link className="ui-btn-secondary mt-6 inline-flex rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700" href="/dashboard/patients">
           Back
         </Link>
       </main>
@@ -126,7 +126,7 @@ export default async function PatientDetailPage({ params }: { params: { id: stri
           </label>
 
           <div className="sm:col-span-2 pt-2">
-            <button type="submit" className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
+            <button type="submit" className="ui-btn-primary rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
               Save
             </button>
           </div>

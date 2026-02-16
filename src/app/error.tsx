@@ -30,7 +30,7 @@ export default function Error({
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
           <button
             onClick={reset}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            className="ui-btn-primary rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
           >
             Try again
           </button>

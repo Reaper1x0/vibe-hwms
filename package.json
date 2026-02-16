@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write .",
-    "supabase": "supabase"
+    "supabase": "supabase",
+    "deploy": "node scripts/deploy-to-vercel.js"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",

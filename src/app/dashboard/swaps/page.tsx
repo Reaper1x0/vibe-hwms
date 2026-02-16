@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AutoSubmitForm } from "@/components/AutoSubmitForm";
 import { ConfirmActionButton } from "@/components/ConfirmActionForm";
+import { CreateFormToggle } from "@/components/CreateFormToggle";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { apiFetch } from "@/lib/api/origin";
 import { isSupabaseConfigured } from "@/lib/env";
+import { DEFAULT_PAGE_SIZE, parseLimit, ROWS_PER_PAGE_OPTIONS } from "@/lib/table-pagination";
 
 type SwapRow = {
   id: string;
@@ -79,14 +82,14 @@ async function setSwapStatus(id: string, status: string) {
 export default async function SwapsPage({
   searchParams,
 }: {
-  searchParams?: { page?: string; success?: string; error?: string };
+  searchParams?: { page?: string; limit?: string; success?: string; error?: string };
 }) {
   if (!isSupabaseConfigured()) {
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Swap Requests</h1>
         <p className="mt-2 text-sm text-zinc-600">Supabase is not configured.</p>
-        <Link className="mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
+        <Link className="ui-btn-primary mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
           Go to setup
         </Link>
       </main>
@@ -108,22 +111,22 @@ export default async function SwapsPage({
 
   const canReview = role === "super_admin" || role === "admin" || role === "hod";
 
+  const limit = parseLimit(searchParams?.limit);
   const page = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
-  const SWAPS_PAGE_SIZE = 25;
-  const offset = (page - 1) * SWAPS_PAGE_SIZE;
+  const offset = (page - 1) * limit;
 
   const swapsParams = new URLSearchParams();
-  swapsParams.set("limit", String(SWAPS_PAGE_SIZE));
+  swapsParams.set("limit", String(limit));
   swapsParams.set("offset", String(offset));
 
   const swapsRes = await apiFetch(`/api/swaps?${swapsParams.toString()}`, { cache: "no-store" });
-  const swapsJson = (await swapsRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: SWAPS_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
+  const swapsJson = (await swapsRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: DEFAULT_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
     data: SwapRow[];
     pagination: { total: number; limit: number; offset: number; hasMore: boolean };
   };
   const swaps = swapsJson.data ?? [];
-  const pagination = swapsJson.pagination ?? { total: 0, limit: SWAPS_PAGE_SIZE, offset: 0, hasMore: false };
-  const totalPages = Math.max(1, Math.ceil(pagination.total / SWAPS_PAGE_SIZE));
+  const pagination = swapsJson.pagination ?? { total: 0, limit: DEFAULT_PAGE_SIZE, offset: 0, hasMore: false };
+  const totalPages = Math.max(1, Math.ceil(pagination.total / limit));
 
   const shiftsRes = await apiFetch("/api/shifts?limit=1000", { cache: "no-store" });
   const shiftsJson = (await shiftsRes.json().catch(() => ({ data: [] }))) as { data: ShiftRow[] };
@@ -143,25 +146,24 @@ export default async function SwapsPage({
   const showSuccess = searchParams?.success === "1";
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-10">
+    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10 min-h-0">
       {errorMessage ? (
-        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
+        <div className="shrink-0 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
           {errorMessage}
         </div>
       ) : null}
       {showSuccess ? (
-        <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
+        <div className="shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
           Swap request created.
         </div>
       ) : null}
-      <div>
+      <div className="shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight">Swap Requests</h1>
         <p className="mt-2 text-sm text-zinc-600">Request shift swaps and manage approvals.</p>
       </div>
 
-      <section className="mt-8 rounded-lg border bg-white p-6">
-        <h2 className="text-base font-semibold">Create swap request</h2>
-        <form action={createSwap} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-4">
+      <CreateFormToggle title="Create swap request" buttonLabel="Add swap request">
+        <form action={createSwap} className="grid grid-cols-1 gap-4 sm:grid-cols-4">
           <label className="block">
             <span className="text-sm font-medium">Shift</span>
             <select
@@ -188,13 +190,30 @@ export default async function SwapsPage({
             <FormSubmitButton label="Submit" loadingLabel="Submitting…" />
           </div>
         </form>
-      </section>
+      </CreateFormToggle>
 
-      <section className="mt-8 overflow-hidden rounded-lg border bg-white">
-        <div className="border-b px-6 py-4">
-          <h2 className="text-base font-semibold">Swap requests</h2>
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-white">
+        <div className="shrink-0 border-b px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">Swap requests</h2>
+            <AutoSubmitForm className="flex items-center gap-1 text-xs">
+              <input type="hidden" name="page" value="1" />
+              <span className="text-zinc-600">Rows</span>
+              <select
+                name="limit"
+                defaultValue={limit}
+                className="rounded-md border bg-white px-2 py-1 text-xs"
+              >
+                {ROWS_PER_PAGE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </AutoSubmitForm>
+          </div>
         </div>
-        <div className="overflow-x-auto">
+        <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-zinc-50 text-zinc-600">
               <tr>
@@ -274,23 +293,23 @@ export default async function SwapsPage({
           </table>
         </div>
         {totalPages > 1 ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
             <span>
               Page {page} of {totalPages} ({pagination.total} requests)
             </span>
             <div className="flex gap-2">
               {page > 1 ? (
                 <Link
-                  href={`/dashboard/swaps?page=${page - 1}`}
-                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                  href={`/dashboard/swaps?limit=${limit}&page=${page - 1}`}
+                  className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium"
                 >
                   Previous
                 </Link>
               ) : null}
               {page < totalPages ? (
                 <Link
-                  href={`/dashboard/swaps?page=${page + 1}`}
-                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                  href={`/dashboard/swaps?limit=${limit}&page=${page + 1}`}
+                  className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium"
                 >
                   Next
                 </Link>

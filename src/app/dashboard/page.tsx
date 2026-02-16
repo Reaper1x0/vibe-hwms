@@ -120,19 +120,19 @@ export default function DashboardHomePage() {
           <div className="mt-4 flex flex-wrap justify-center gap-3">
             <a
               href="/dashboard/patients"
-              className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              className="ui-btn-primary rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
             >
               Add patients
             </a>
             <a
               href="/dashboard/schedule"
-              className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700"
             >
               Schedule
             </a>
             <a
               href="/dashboard/tasks"
-              className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700"
             >
               Create task
             </a>
@@ -242,7 +242,7 @@ function StatCard({ label, value, loading, href }: StatCardProps) {
   return (
     <div className="rounded-lg border bg-white p-0 shadow-sm">
       {href ? (
-        <a href={href} className="block p-4 hover:bg-zinc-50">
+        <a href={href} className="ui-link block p-4 transition-colors hover:bg-zinc-50">
           {content}
         </a>
       ) : (
@@ -268,7 +268,7 @@ function StatusItem({ label, value, className, href }: StatusItemProps) {
   );
   if (href) {
     return (
-      <a href={href} className={`flex items-center justify-between rounded-md px-3 py-2 ${className} hover:opacity-90`}>
+      <a href={href} className={`ui-link flex items-center justify-between rounded-md px-3 py-2 transition-opacity ${className} hover:opacity-90`}>
         {content}
       </a>
     );

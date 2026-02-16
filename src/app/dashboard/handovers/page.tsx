@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AutoSubmitForm } from "@/components/AutoSubmitForm";
+import { CreateFormToggle } from "@/components/CreateFormToggle";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { apiFetch } from "@/lib/api/origin";
 import { isSupabaseConfigured } from "@/lib/env";
+import { DEFAULT_PAGE_SIZE, parseLimit, ROWS_PER_PAGE_OPTIONS } from "@/lib/table-pagination";
 
 type HandoverRow = {
   id: string;
@@ -61,14 +64,14 @@ async function createHandover(formData: FormData) {
 export default async function HandoversPage({
   searchParams,
 }: {
-  searchParams?: { page?: string; success?: string; error?: string };
+  searchParams?: { page?: string; limit?: string; success?: string; error?: string };
 }) {
   if (!isSupabaseConfigured()) {
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Handovers</h1>
         <p className="mt-2 text-sm text-zinc-600">Supabase is not configured.</p>
-        <Link className="mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
+        <Link className="ui-btn-primary mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
           Go to setup
         </Link>
       </main>
@@ -109,12 +112,12 @@ export default async function HandoversPage({
       </main>
     );
   }
+  const limit = parseLimit(searchParams?.limit);
   const page = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
-  const HANDOVERS_PAGE_SIZE = 25;
-  const offset = (page - 1) * HANDOVERS_PAGE_SIZE;
+  const offset = (page - 1) * limit;
 
   const handoversParams = new URLSearchParams();
-  handoversParams.set("limit", String(HANDOVERS_PAGE_SIZE));
+  handoversParams.set("limit", String(limit));
   handoversParams.set("offset", String(offset));
 
   const handoversRes = await apiFetch(`/api/handovers?${handoversParams.toString()}`, { cache: "no-store" });
@@ -126,13 +129,13 @@ export default async function HandoversPage({
       </main>
     );
   }
-  const handoversJson = (await handoversRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: HANDOVERS_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
+  const handoversJson = (await handoversRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: DEFAULT_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
     data: HandoverRow[];
     pagination: { total: number; limit: number; offset: number; hasMore: boolean };
   };
   const handovers = handoversJson.data ?? [];
-  const pagination = handoversJson.pagination ?? { total: 0, limit: HANDOVERS_PAGE_SIZE, offset: 0, hasMore: false };
-  const totalPages = Math.max(1, Math.ceil(pagination.total / HANDOVERS_PAGE_SIZE));
+  const pagination = handoversJson.pagination ?? { total: 0, limit: DEFAULT_PAGE_SIZE, offset: 0, hasMore: false };
+  const totalPages = Math.max(1, Math.ceil(pagination.total / limit));
 
   const patientNameById = new Map(patients.map((p) => [p.id, p.full_name]));
 
@@ -140,25 +143,24 @@ export default async function HandoversPage({
   const showSuccess = searchParams?.success === "1";
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-10">
+    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10 min-h-0">
       {errorMessage ? (
-        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
+        <div className="shrink-0 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
           {errorMessage}
         </div>
       ) : null}
       {showSuccess ? (
-        <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
+        <div className="shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900" role="status">
           Handover created.
         </div>
       ) : null}
-      <div>
+      <div className="shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight">Handovers</h1>
         <p className="mt-2 text-sm text-zinc-600">Shift handovers and continuity notes.</p>
       </div>
 
-      <section className="mt-8 rounded-lg border bg-white p-6">
-        <h2 className="text-base font-semibold">Create handover</h2>
-        <form action={createHandover} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-4">
+      <CreateFormToggle title="Create handover" buttonLabel="Add handover">
+        <form action={createHandover} className="grid grid-cols-1 gap-4 sm:grid-cols-4">
           {role === "super_admin" ? (
             <label className="block sm:col-span-2">
               <span className="text-sm font-medium">Hospital</span>
@@ -204,11 +206,28 @@ export default async function HandoversPage({
             <FormSubmitButton label="Create" loadingLabel="Creating…" />
           </div>
         </form>
-      </section>
+      </CreateFormToggle>
 
       <section className="mt-8 overflow-hidden rounded-lg border bg-white">
         <div className="border-b px-6 py-4">
-          <h2 className="text-base font-semibold">Handovers</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">Handovers</h2>
+            <AutoSubmitForm className="flex items-center gap-1 text-xs">
+              <input type="hidden" name="page" value="1" />
+              <span className="text-zinc-600">Rows</span>
+              <select
+                name="limit"
+                defaultValue={limit}
+                className="rounded-md border bg-white px-2 py-1 text-xs"
+              >
+                {ROWS_PER_PAGE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </AutoSubmitForm>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -229,7 +248,7 @@ export default async function HandoversPage({
                 return (
                   <tr key={h.id} className="border-t">
                     <td className="px-6 py-3">
-                      <Link className="font-medium text-zinc-900 underline" href={`/dashboard/handovers/${h.id}`}>
+                      <Link className="ui-link font-medium text-zinc-900 underline" href={`/dashboard/handovers/${h.id}`}>
                         {h.notes ? h.notes.slice(0, 50) : "(no notes)"}
                       </Link>
                     </td>
@@ -252,23 +271,23 @@ export default async function HandoversPage({
           </table>
         </div>
         {totalPages > 1 ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
             <span>
               Page {page} of {totalPages} ({pagination.total} handovers)
             </span>
             <div className="flex gap-2">
               {page > 1 ? (
                 <Link
-                  href={`/dashboard/handovers?page=${page - 1}`}
-                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                  href={`/dashboard/handovers?limit=${limit}&page=${page - 1}`}
+                  className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium"
                 >
                   Previous
                 </Link>
               ) : null}
               {page < totalPages ? (
                 <Link
-                  href={`/dashboard/handovers?page=${page + 1}`}
-                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                  href={`/dashboard/handovers?limit=${limit}&page=${page + 1}`}
+                  className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium"
                 >
                   Next
                 </Link>

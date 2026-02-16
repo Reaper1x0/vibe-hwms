@@ -44,7 +44,7 @@ export default async function DepartmentDetailPage({ params }: { params: { id: s
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Department</h1>
         <p className="mt-2 text-sm text-zinc-600">Supabase is not configured.</p>
-        <Link className="mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
+        <Link className="ui-btn-primary mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
           Go to setup
         </Link>
       </main>
@@ -116,7 +116,7 @@ export default async function DepartmentDetailPage({ params }: { params: { id: s
           </label>
 
           <div className="sm:col-span-2 pt-2">
-            <button type="submit" className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
+            <button type="submit" className="ui-btn-primary rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
               Save
             </button>
           </div>

@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AutoSubmitForm } from "@/components/AutoSubmitForm";
+import { CreateFormToggle } from "@/components/CreateFormToggle";
 import { apiFetch } from "@/lib/api/origin";
 import { isSupabaseConfigured } from "@/lib/env";
+import { DEFAULT_PAGE_SIZE, parseLimit, ROWS_PER_PAGE_OPTIONS } from "@/lib/table-pagination";
 
 type HospitalRow = {
   id: string;
@@ -48,13 +51,17 @@ async function createDepartment(formData: FormData) {
   }
 }
 
-export default async function DepartmentsPage() {
+export default async function DepartmentsPage({
+  searchParams,
+}: {
+  searchParams?: { page?: string; limit?: string };
+}) {
   if (!isSupabaseConfigured()) {
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Departments</h1>
         <p className="mt-2 text-sm text-zinc-600">Supabase is not configured.</p>
-        <Link className="mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
+        <Link className="ui-btn-primary mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
           Go to setup
         </Link>
       </main>
@@ -89,7 +96,15 @@ export default async function DepartmentsPage() {
     scopedHospitalName = hospitalJson?.data?.name ?? null;
   }
 
-  const deptRes = await apiFetch("/api/departments", { cache: "no-store" });
+  const limit = parseLimit(searchParams?.limit);
+  const page = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
+  const offset = (page - 1) * limit;
+
+  const deptParams = new URLSearchParams();
+  deptParams.set("limit", String(limit));
+  deptParams.set("offset", String(offset));
+
+  const deptRes = await apiFetch(`/api/departments?${deptParams.toString()}`, { cache: "no-store" });
   if (deptRes.status === 403) {
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
@@ -98,19 +113,23 @@ export default async function DepartmentsPage() {
       </main>
     );
   }
-  const deptJson = (await deptRes.json().catch(() => ({ data: [] }))) as { data: DepartmentRow[] };
+  const deptJson = (await deptRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: DEFAULT_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
+    data: DepartmentRow[];
+    pagination: { total: number; limit: number; offset: number; hasMore: boolean };
+  };
   const departments = deptJson.data ?? [];
+  const pagination = deptJson.pagination ?? { total: 0, limit: DEFAULT_PAGE_SIZE, offset: 0, hasMore: false };
+  const totalPages = Math.max(1, Math.ceil(pagination.total / limit));
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-10">
-      <div>
+    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10 min-h-0">
+      <div className="shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight">Departments</h1>
         <p className="mt-2 text-sm text-zinc-600">Create and manage departments.</p>
       </div>
 
-      <section className="mt-8 rounded-lg border bg-white p-6">
-        <h2 className="text-base font-semibold">Create department</h2>
-        <form action={createDepartment} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <CreateFormToggle title="Create department" buttonLabel="Add department">
+        <form action={createDepartment} className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {role === "super_admin" ? (
             <label className="block">
               <span className="text-sm font-medium">Hospital</span>
@@ -164,18 +183,35 @@ export default async function DepartmentsPage() {
           </label>
 
           <div className="sm:col-span-3">
-            <button type="submit" className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
+            <button type="submit" className="ui-btn-primary rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white">
               Create
             </button>
           </div>
         </form>
-      </section>
+      </CreateFormToggle>
 
-      <section className="mt-8 overflow-hidden rounded-lg border bg-white">
-        <div className="border-b px-6 py-4">
-          <h2 className="text-base font-semibold">All departments</h2>
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-white">
+        <div className="shrink-0 border-b px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">All departments</h2>
+            <AutoSubmitForm className="flex items-center gap-1 text-xs">
+              <input type="hidden" name="page" value="1" />
+              <span className="text-zinc-600">Rows</span>
+              <select
+                name="limit"
+                defaultValue={limit}
+                className="rounded-md border bg-white px-2 py-1 text-xs"
+              >
+                {ROWS_PER_PAGE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </AutoSubmitForm>
+          </div>
         </div>
-        <div className="overflow-x-auto">
+        <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-zinc-50 text-zinc-600">
               <tr>
@@ -201,13 +237,38 @@ export default async function DepartmentsPage() {
               {departments.length === 0 ? (
                 <tr>
                   <td className="px-6 py-10 text-zinc-600" colSpan={3}>
-                    No departments yet.
+                    {pagination.total === 0 ? "No departments yet." : "No departments on this page."}
                   </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
         </div>
+        {totalPages > 1 ? (
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
+            <span>
+              Page {page} of {totalPages} ({pagination.total} departments)
+            </span>
+            <div className="flex gap-2">
+              {page > 1 ? (
+                <Link
+                  href={`/dashboard/departments?limit=${limit}&page=${page - 1}`}
+                  className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium"
+                >
+                  Previous
+                </Link>
+              ) : null}
+              {page < totalPages ? (
+                <Link
+                  href={`/dashboard/departments?limit=${limit}&page=${page + 1}`}
+                  className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium"
+                >
+                  Next
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
       </section>
     </main>
   );

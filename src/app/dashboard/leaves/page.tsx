@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AutoSubmitForm } from "@/components/AutoSubmitForm";
 import { ConfirmActionButton } from "@/components/ConfirmActionForm";
+import { CreateFormToggle } from "@/components/CreateFormToggle";
 import { FormSubmitButton } from "@/components/FormSubmitButton";
 import { apiFetch } from "@/lib/api/origin";
 import { isSupabaseConfigured } from "@/lib/env";
+import { DEFAULT_PAGE_SIZE, parseLimit, ROWS_PER_PAGE_OPTIONS } from "@/lib/table-pagination";
 
 type LeaveRow = {
   id: string;
@@ -70,14 +73,14 @@ async function setLeaveStatus(id: string, status: string) {
 export default async function LeavesPage({
   searchParams,
 }: {
-  searchParams?: { view?: string; status?: string; error?: string; page?: string };
+  searchParams?: { view?: string; status?: string; error?: string; page?: string; limit?: string };
 }) {
   if (!isSupabaseConfigured()) {
     return (
       <main className="mx-auto w-full max-w-5xl px-6 py-10">
         <h1 className="text-2xl font-semibold tracking-tight">Leaves</h1>
         <p className="mt-2 text-sm text-zinc-600">Supabase is not configured.</p>
-        <Link className="mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
+        <Link className="ui-btn-primary mt-6 inline-flex rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/setup">
           Go to setup
         </Link>
       </main>
@@ -102,12 +105,12 @@ export default async function LeavesPage({
 
   const view = searchParams?.view ?? "all";
   const statusFilter = searchParams?.status ?? "all";
+  const limit = parseLimit(searchParams?.limit);
   const page = Math.max(1, parseInt(String(searchParams?.page ?? "1"), 10) || 1);
-  const LEAVES_PAGE_SIZE = 25;
-  const offset = (page - 1) * LEAVES_PAGE_SIZE;
+  const offset = (page - 1) * limit;
 
   const leavesParams = new URLSearchParams();
-  leavesParams.set("limit", String(LEAVES_PAGE_SIZE));
+  leavesParams.set("limit", String(limit));
   leavesParams.set("offset", String(offset));
   if (view === "mine" && userId) {
     leavesParams.set("user_id", userId);
@@ -117,32 +120,31 @@ export default async function LeavesPage({
   }
 
   const leavesRes = await apiFetch(`/api/leaves?${leavesParams.toString()}`, { cache: "no-store" });
-  const leavesJson = (await leavesRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: LEAVES_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
+  const leavesJson = (await leavesRes.json().catch(() => ({ data: [], pagination: { total: 0, limit: DEFAULT_PAGE_SIZE, offset: 0, hasMore: false } }))) as {
     data: LeaveRow[];
     pagination: { total: number; limit: number; offset: number; hasMore: boolean };
   };
   const leaves = leavesJson.data ?? [];
-  const pagination = leavesJson.pagination ?? { total: 0, limit: LEAVES_PAGE_SIZE, offset: 0, hasMore: false };
-  const totalPages = Math.max(1, Math.ceil(pagination.total / LEAVES_PAGE_SIZE));
+  const pagination = leavesJson.pagination ?? { total: 0, limit: DEFAULT_PAGE_SIZE, offset: 0, hasMore: false };
+  const totalPages = Math.max(1, Math.ceil(pagination.total / limit));
 
   const errorMessage = searchParams?.error ? decodeURIComponent(searchParams.error) : null;
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-6 py-10">
+    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-6 py-10 min-h-0">
       {errorMessage ? (
-        <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
+        <div className="shrink-0 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900" role="alert">
           {errorMessage}
         </div>
       ) : null}
-      <div>
+      <div className="shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight">Leaves</h1>
         <p className="mt-2 text-sm text-zinc-600">Request leave and manage approvals.</p>
       </div>
 
       {hospitalId ? (
-        <section className="mt-8 rounded-lg border bg-white p-6">
-          <h2 className="text-base font-semibold">Request leave</h2>
-          <form action={createLeave} className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <CreateFormToggle title="Request leave" buttonLabel="Request leave">
+          <form action={createLeave} className="grid grid-cols-1 gap-4 sm:grid-cols-4">
             <label className="block">
               <span className="text-sm font-medium">Start date</span>
               <input name="start_date" type="date" required className="mt-1 w-full rounded-md border px-3 py-2 text-sm" />
@@ -159,38 +161,55 @@ export default async function LeavesPage({
               <FormSubmitButton label="Submit" loadingLabel="Submitting…" />
             </div>
           </form>
-        </section>
+        </CreateFormToggle>
       ) : (
-        <section className="mt-8 rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
+        <section className="shrink-0 rounded-lg border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
           Your account is not scoped to a hospital. Ask a Super Admin to assign your hospital.
         </section>
       )}
 
-      <section className="mt-8 overflow-hidden rounded-lg border bg-white">
-        <div className="border-b px-6 py-4">
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-white">
+        <div className="shrink-0 border-b px-6 py-4">
           <h2 className="text-base font-semibold">Leave requests</h2>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             <Link
-              href="/dashboard/leaves?view=mine"
+              href={`/dashboard/leaves?view=mine&status=${statusFilter}&limit=${limit}`}
               className={`rounded-md px-3 py-1.5 font-medium ${view === "mine" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"}`}
             >
               My requests
             </Link>
             <Link
-              href="/dashboard/leaves?view=all"
+              href={`/dashboard/leaves?view=all&status=${statusFilter}&limit=${limit}`}
               className={`rounded-md px-3 py-1.5 font-medium ${view === "all" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"}`}
             >
               All requests
             </Link>
             <Link
-              href="/dashboard/leaves?status=pending"
+              href={`/dashboard/leaves?view=${view}&status=pending&limit=${limit}`}
               className="rounded-md px-3 py-1.5 text-zinc-600 hover:bg-zinc-100"
             >
               Pending only
             </Link>
+            <AutoSubmitForm className="flex items-center gap-1">
+              <input type="hidden" name="view" value={view} />
+              <input type="hidden" name="status" value={statusFilter} />
+              <input type="hidden" name="page" value="1" />
+              <span className="text-zinc-600 text-xs">Rows</span>
+              <select
+                name="limit"
+                defaultValue={limit}
+                className="rounded-md border bg-white px-2 py-1 text-xs"
+              >
+                {ROWS_PER_PAGE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+            </AutoSubmitForm>
           </div>
         </div>
-        <div className="overflow-x-auto">
+        <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-full text-left text-sm" aria-label="Leave requests">
             <thead className="bg-zinc-50 text-zinc-600">
               <tr>
@@ -259,23 +278,23 @@ export default async function LeavesPage({
           </table>
         </div>
         {totalPages > 1 ? (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t px-6 py-3 text-sm text-zinc-600">
             <span>
               Page {page} of {totalPages} ({pagination.total} requests)
             </span>
             <div className="flex gap-2">
               {page > 1 ? (
                 <Link
-                  href={`/dashboard/leaves?view=${view}&status=${statusFilter}&page=${page - 1}`}
-                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                  href={`/dashboard/leaves?view=${view}&status=${statusFilter}&limit=${limit}&page=${page - 1}`}
+                  className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium"
                 >
                   Previous
                 </Link>
               ) : null}
               {page < totalPages ? (
                 <Link
-                  href={`/dashboard/leaves?view=${view}&status=${statusFilter}&page=${page + 1}`}
-                  className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-zinc-50"
+                  href={`/dashboard/leaves?view=${view}&status=${statusFilter}&limit=${limit}&page=${page + 1}`}
+                  className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium"
                 >
                   Next
                 </Link>

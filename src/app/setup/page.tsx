@@ -15,11 +15,11 @@ SUPABASE_SERVICE_ROLE_KEY=...
       </pre>
 
       <div className="mt-6 flex flex-wrap gap-3">
-        <Link className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/login">
+        <Link className="ui-btn-primary rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white" href="/login">
           Go to Login
         </Link>
         <a
-          className="rounded-md border px-4 py-2 text-sm font-medium"
+          className="ui-btn-secondary rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700"
           href="https://supabase.com/docs/guides/getting-started"
           target="_blank"
           rel="noreferrer"

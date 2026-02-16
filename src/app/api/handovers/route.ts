@@ -57,7 +57,7 @@ export async function GET(request: Request) {
     const shiftId = searchParams.get("shift_id");
     const fromUserId = searchParams.get("from_user_id");
     const toUserId = searchParams.get("to_user_id");
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "25", 10)));
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "5", 10)));
     const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10));
 
     const supabase = createSupabaseAdminClient();
